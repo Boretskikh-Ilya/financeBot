@@ -12,6 +12,9 @@ target/
 *.iml
 *.ipr
 
+#Telegram-Bot
+src/main/resources/bot.properties
+
 ### Eclipse ###
 .apt_generated
 .classpath

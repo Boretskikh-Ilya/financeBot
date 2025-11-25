@@ -14,6 +14,8 @@ public class TelegramBot extends TelegramLongPollingBot {
     private Map<Long, Double> userBalances = new HashMap<>();
     private Map<Long, List<Expense>> userExpenses = new HashMap<>();
     private Map<Long, Double> temporaryAmounts = new HashMap<>(); // Новый Map для временных сумм
+    private final String botToken;
+    private final String botUsername;
 
     private static class Expense {
         double amount;
@@ -27,14 +29,19 @@ public class TelegramBot extends TelegramLongPollingBot {
         }
     }
 
+    public TelegramBot(String botToken, String botUsername) {
+        this.botToken = botToken;
+        this.botUsername = botUsername;
+    }
+
     @Override
     public String getBotToken() {
-        return "7596704485:AAENl2PrL6D7Qxp4ilcQh9KLAR0VrDSXnsg";
+        return botToken;
     }
 
     @Override
     public String getBotUsername() {
-        return "finance_matmech_bot";
+        return botUsername;
     }
 
     @Override
@@ -59,92 +66,106 @@ public class TelegramBot extends TelegramLongPollingBot {
         String state = userStates.get(chatId);
 
         if (state != null) {
-            return processState(chatId, text, state);
+            return handleState(chatId, text, state);
         }
 
-        switch (text.toLowerCase()) {
-            case "/start":
-                return "💰 Финансовый бот\n\n" +
-                        "Команды:\n" +
-                        "/add - Добавить расход\n" +
-                        "/balance - Баланс\n" +
-                        "/expenses - Последние расходы\n" +
-                        "/help - Помощь";
+        return switch (text.toLowerCase()) {
+            case "/start" -> handleStart(chatId);
+            case "/add" -> handleAdd(chatId);
+            case "/balance" -> handleBalance(chatId);
+            case "/expenses" -> handleExpenses(chatId);
+            case "/help" -> handleHelp(chatId);
+            default -> handleUnknown(chatId, text);
+        };
+    }
 
-            case "/add":
-                userStates.put(chatId, "WAITING_AMOUNT");
-                return "💸 Введите сумму расхода:";
+    private String handleStart(Long chatId) {
+        return "💰 Финансовый бот\n\n" +
+                "Команды:\n" +
+                "/add - Добавить расход\n" +
+                "/balance - Баланс\n" +
+                "/expenses - Последние расходы\n" +
+                "/help - Помощь";
+    }
 
-            case "/balance":
-                return "💰 Баланс: " + userBalances.get(chatId) + " руб.";
+    private String handleAdd(Long chatId) {
+        userStates.put(chatId, "WAITING_AMOUNT");
+        return "💸 Введите сумму расхода:";
+    }
 
-            case "/expenses":
-                return getLastExpenses(chatId);
+    private String handleBalance(Long chatId) {
+        return "💰 Баланс: " + userBalances.get(chatId) + " руб.";
+    }
 
-            case "/help":
-                return "📋 Команды:\n" +
-                        "/add - Добавить расход\n" +
-                        "/balance - Баланс\n" +
-                        "/expenses - Последние расходы\n" +
-                        "/help - Помощь";
+    private String handleExpenses(Long chatId) {
+        return getLastExpenses(chatId);
+    }
 
-            default:
-                return "Используйте /help для списка команд";
+    private String handleHelp(Long chatId) {
+        return "📋 Команды:\n" +
+                "/add - Добавить расход\n" +
+                "/balance - Баланс\n" +
+                "/expenses - Последние расходы\n" +
+                "/help - Помощь";
+    }
+
+    private String handleUnknown(Long chatId, String text) {
+        return "Используйте /help для списка команд";
+    }
+
+    private String handleState(Long chatId, String text, String state) {
+        return switch (state) {
+            case "WAITING_AMOUNT" -> handleWaitingAmount(chatId, text);
+            case "WAITING_CATEGORY" -> handleWaitingCategory(chatId, text);
+            default -> {
+                userStates.remove(chatId);
+                temporaryAmounts.remove(chatId);
+                yield "Ошибка состояния. Используйте /help для списка команд";
+            }
+        };
+    }
+
+    private String handleWaitingAmount(Long chatId, String text) {
+        try {
+            double amount = Double.parseDouble(text);
+            if (amount <= 0) {
+                return "❌ Сумма должна быть больше 0!";
+            }
+            temporaryAmounts.put(chatId, amount); // сохраняем сумму
+            userStates.put(chatId, "WAITING_CATEGORY");
+            return "📁 Выберите категорию:\n" +
+                    "1 - Еда\n" +
+                    "2 - Транспорт\n" +
+                    "3 - Развлечения\n" +
+                    "4 - Коммунальные\n" +
+                    "5 - Другое";
+        } catch (NumberFormatException e) {
+            userStates.remove(chatId);
+            return "❌ Ошибка! Введите корректную сумму (например: 1500 или 1500.50):";
         }
     }
 
-    private String processState(Long chatId, String text, String state) {
-        switch (state) {
-            case "WAITING_AMOUNT":
-                try {
-                    double amount = Double.parseDouble(text);
-                    if (amount <= 0) {
-                        return "❌ Сумма должна быть больше 0!";
-                    }
-                    temporaryAmounts.put(chatId, amount); // Сохраняем сумму во временный Map
-                    userStates.put(chatId, "WAITING_CATEGORY");
-                    return "📁 Выберите категорию:\n" +
-                            "1 - Еда\n" +
-                            "2 - Транспорт\n" +
-                            "3 - Развлечения\n" +
-                            "4 - Коммунальные\n" +
-                            "5 - Другое";
-                } catch (NumberFormatException e) {
-                    userStates.remove(chatId);
-                    return "❌ Ошибка! Введите корректную сумму (например: 1500 или 1500.50):";
-                }
+    private String handleWaitingCategory(Long chatId, String text) {
+        String category = getCategoryByNumber(text);
+        Double amount = temporaryAmounts.get(chatId);
 
-            case "WAITING_CATEGORY":
-                String category = getCategoryByNumber(text);
-                Double amount = temporaryAmounts.get(chatId); // Получаем сумму из временного Map
-
-                if (amount == null) {
-                    userStates.remove(chatId);
-                    return "❌ Ошибка данных. Начните заново с /add";
-                }
-
-                // Сохраняем расход
-                Expense expense = new Expense(amount, category);
-                userExpenses.get(chatId).add(expense);
-
-                // Обновляем баланс
-                double currentBalance = userBalances.get(chatId);
-                userBalances.put(chatId, currentBalance - amount);
-
-                // Чистим состояния и временные данные
-                userStates.remove(chatId);
-                temporaryAmounts.remove(chatId);
-
-                return "✅ Добавлен расход:\n" +
-                        "💸 Сумма: " + amount + " руб.\n" +
-                        "📁 Категория: " + category + "\n" +
-                        "💰 Новый баланс: " + userBalances.get(chatId) + " руб.";
-
-            default:
-                userStates.remove(chatId);
-                temporaryAmounts.remove(chatId);
-                return "Ошибка состояния. Используйте /help для списка команд";
+        if (amount == null) {
+            userStates.remove(chatId);
+            return "❌ Ошибка данных. Начните заново с /add";
         }
+
+        Expense expense = new Expense(amount, category);
+        userExpenses.get(chatId).add(expense);
+
+        userBalances.compute(chatId, (k, currentBalance) -> currentBalance - amount);
+
+        userStates.remove(chatId);
+        temporaryAmounts.remove(chatId);
+
+        return "✅ Добавлен расход:\n" +
+                "💸 Сумма: " + amount + " руб.\n" +
+                "📁 Категория: " + category + "\n" +
+                "💰 Новый баланс: " + userBalances.get(chatId) + " руб.";
     }
 
     private String getCategoryByNumber(String number) {

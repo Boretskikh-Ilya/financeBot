@@ -1,5 +1,7 @@
 package org.example;
 
+import org.example.bot.ExpenseDao;
+import org.example.bot.InMemoryExpenseDao;
 import org.example.bot.TelegramBot;
 import org.telegram.telegrambots.meta.TelegramBotsApi;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
@@ -26,6 +28,7 @@ public class Main {
 
         String botToken = props.getProperty("BOT_TOKEN");
         String botUsername = props.getProperty("BOT_USERNAME");
+        ExpenseDao expenseDao = new InMemoryExpenseDao();
 
         if (botToken == null || botToken.isEmpty()) {
             System.err.println("❌ BOT_TOKEN не задан!");
@@ -38,7 +41,8 @@ public class Main {
 
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
-            botsApi.registerBot(new TelegramBot(botToken, botUsername));
+
+            botsApi.registerBot(new TelegramBot(botToken, botUsername, expenseDao));
             System.out.println("✅ Финансовый бот запущен!");
             System.out.println("Бот: " + botUsername);
         } catch (TelegramApiException e) {

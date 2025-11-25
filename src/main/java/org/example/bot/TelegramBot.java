@@ -6,32 +6,27 @@ import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
+
+
 import java.util.*;
 
 public class TelegramBot extends TelegramLongPollingBot {
 
     private Map<Long, String> userStates = new HashMap<>();
-    private Map<Long, Double> userBalances = new HashMap<>();
-    private Map<Long, List<Expense>> userExpenses = new HashMap<>();
+//    private Map<Long, Double> userBalances = new HashMap<>();
+//    private Map<Long, List<Expense>> userExpenses = new HashMap<>();
+
     private Map<Long, Double> temporaryAmounts = new HashMap<>(); // Новый Map для временных сумм
     private final String botToken;
     private final String botUsername;
+    private final ExpenseDao expenseDao;
 
-    private static class Expense {
-        double amount;
-        String category;
-        Date date;
 
-        Expense(double amount, String category) {
-            this.amount = amount;
-            this.category = category;
-            this.date = new Date();
-        }
-    }
-
-    public TelegramBot(String botToken, String botUsername) {
+    public TelegramBot(String botToken, String botUsername, ExpenseDao expenseDao) {
         this.botToken = botToken;
         this.botUsername = botUsername;
+        this.expenseDao = expenseDao;
+
     }
 
     @Override
@@ -55,8 +50,8 @@ public class TelegramBot extends TelegramLongPollingBot {
         String text = message.getText();
 
         // Инициализация данных пользователя
-        userBalances.putIfAbsent(chatId, 0.0);
-        userExpenses.putIfAbsent(chatId, new ArrayList<>());
+//        userBalances.putIfAbsent(chatId, 0.0);
+//        userExpenses.putIfAbsent(chatId, new ArrayList<>());
 
         String response = processCommand(chatId, text);
         sendMessage(chatId, response);
@@ -94,7 +89,7 @@ public class TelegramBot extends TelegramLongPollingBot {
     }
 
     private String handleBalance(Long chatId) {
-        return "💰 Баланс: " + userBalances.get(chatId) + " руб.";
+        return "💰 Баланс: " + expenseDao.getBalance(chatId) + " руб.";
     }
 
     private String handleExpenses(Long chatId) {
@@ -155,17 +150,17 @@ public class TelegramBot extends TelegramLongPollingBot {
         }
 
         Expense expense = new Expense(amount, category);
-        userExpenses.get(chatId).add(expense);
-
-        userBalances.compute(chatId, (k, currentBalance) -> currentBalance - amount);
-
+//        userExpenses.get(chatId).add(expense);
+//
+//        userBalances.compute(chatId, (k, currentBalance) -> currentBalance - amount);
+        expenseDao.addExpense(chatId, amount, category);
         userStates.remove(chatId);
         temporaryAmounts.remove(chatId);
 
         return "✅ Добавлен расход:\n" +
                 "💸 Сумма: " + amount + " руб.\n" +
                 "📁 Категория: " + category + "\n" +
-                "💰 Новый баланс: " + userBalances.get(chatId) + " руб.";
+                "💰 Новый баланс: " + expenseDao.getBalance(chatId) + " руб.";
     }
 
     private String getCategoryByNumber(String number) {
@@ -179,7 +174,7 @@ public class TelegramBot extends TelegramLongPollingBot {
     }
 
     private String getLastExpenses(Long chatId) {
-        List<Expense> expenses = userExpenses.get(chatId);
+        List<Expense> expenses = expenseDao.getExpenses(chatId);
         if (expenses.isEmpty()) {
             return "📊 Расходы отсутствуют";
         }
@@ -193,7 +188,7 @@ public class TelegramBot extends TelegramLongPollingBot {
             sb.append("• ").append(exp.amount).append(" руб. - ").append(exp.category).append("\n");
         }
 
-        sb.append("\n💰 Общий баланс: ").append(userBalances.get(chatId)).append(" руб.");
+        sb.append("\n💰 Общий баланс: ").append(expenseDao.getBalance(chatId)).append(" руб.");
         return sb.toString();
     }
 
